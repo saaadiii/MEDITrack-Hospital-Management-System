@@ -1,6 +1,8 @@
+-- MEDITrack FINAL DATABASE - FRESH INSTALL
+-- WARNING: This recreates the meditrack database from scratch.
 
-
-CREATE DATABASE IF NOT EXISTS meditrack CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP DATABASE IF EXISTS meditrack;
+CREATE DATABASE meditrack CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE meditrack;
 
 CREATE TABLE users (
@@ -69,18 +71,25 @@ CREATE TABLE doctor_availability (
     status ENUM('Available','Unavailable') DEFAULT 'Available',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
-    UNIQUE KEY uq_doctor_availability_day (doctor_id, available_date)
+    UNIQUE KEY uq_doctor_availability_day (doctor_id, available_date),
+    UNIQUE KEY uq_doctor_availability_id_doctor (id, doctor_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE doctor_slots (
     id INT AUTO_INCREMENT PRIMARY KEY,
     doctor_id INT NOT NULL,
+    availability_id INT NOT NULL,
     slot_date DATE NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     status ENUM('Available','Booked','Closed') DEFAULT 'Available',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
+    FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+    CONSTRAINT fk_doctor_slots_availability
+        FOREIGN KEY (availability_id, doctor_id)
+        REFERENCES doctor_availability(id, doctor_id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE doctor_appointment_counters (
@@ -218,11 +227,15 @@ CREATE TABLE equipment_sequences (
 CREATE TABLE equipment (
     id INT AUTO_INCREMENT PRIMARY KEY,
     equipment_code VARCHAR(20) NOT NULL UNIQUE,
-    name VARCHAR(120) NOT NULL,
+    equipment_type_id INT NOT NULL,
     department VARCHAR(100) NOT NULL,
     purchase_date DATE NULL,
     condition_status ENUM('Good','Needs Maintenance','Out of Service') DEFAULT 'Good',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_equipment_type
+        FOREIGN KEY (equipment_type_id) REFERENCES equipment_types(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE stock_item_types (
@@ -234,13 +247,16 @@ CREATE TABLE stock_item_types (
 
 CREATE TABLE inventory (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    item_name VARCHAR(120) NOT NULL,
-    category VARCHAR(100) NOT NULL,
+    stock_item_type_id INT NOT NULL,
     quantity INT NOT NULL DEFAULT 0,
     minimum_level INT NOT NULL DEFAULT 0,
     supplier VARCHAR(150) NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_inventory_stock_item_type
+        FOREIGN KEY (stock_item_type_id) REFERENCES stock_item_types(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE inventory_history (

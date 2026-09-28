@@ -103,9 +103,19 @@ class DoctorSlotModel
             }
             $s = mysqli_prepare(
                 $this->c,
-                'UPDATE doctor_slots SET doctor_id=?,slot_date=?,start_time=?,end_time=?,status=? WHERE id=?'
+                'UPDATE doctor_slots SET doctor_id=?,availability_id=?,slot_date=?,start_time=?,end_time=?,status=? WHERE id=?'
             );
-            mysqli_stmt_bind_param($s, 'issssi', $doctorId, $date, $start, $end, $status, $id);
+            mysqli_stmt_bind_param(
+                $s,
+                'iissssi',
+                $doctorId,
+                $availabilityId,
+                $date,
+                $start,
+                $end,
+                $status,
+                $id
+            );
         } else {
             $s = mysqli_prepare(
                 $this->c,
@@ -120,9 +130,18 @@ class DoctorSlotModel
             }
             $s = mysqli_prepare(
                 $this->c,
-                'INSERT INTO doctor_slots(doctor_id,slot_date,start_time,end_time,status) VALUES(?,?,?,?,?)'
+                'INSERT INTO doctor_slots(doctor_id,availability_id,slot_date,start_time,end_time,status) VALUES(?,?,?,?,?,?)'
             );
-            mysqli_stmt_bind_param($s, 'issss', $doctorId, $date, $start, $end, $status);
+            mysqli_stmt_bind_param(
+                $s,
+                'iissss',
+                $doctorId,
+                $availabilityId,
+                $date,
+                $start,
+                $end,
+                $status
+            );
         }
         $ok = mysqli_stmt_execute($s);
         mysqli_stmt_close($s);

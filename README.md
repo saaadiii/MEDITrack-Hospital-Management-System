@@ -19,6 +19,10 @@ The Admin account is created from `database.sql`. Patient, Doctor and Receptioni
 
 If your MySQL uses a password, update `DB_PASS` in `config/config.php`.
 
+### Upgrading an older MEDITrack database
+
+Fresh installations should use **`database.sql` only**. If you already have data from the earlier schema, run **`database_fk_migration.sql` once** instead of recreating the database. It preserves existing records while adding the finalized foreign-key relationships for doctor availability → slots, equipment types → equipment, and stock item types → inventory.
+
 ---
 
 ## 2. Folder structure
@@ -105,6 +109,14 @@ Protected pages check the logged-in role before showing the requested module.
 - The Doctor can create a **prescription**, add a **follow-up** and complete the appointment.
 - The **Patient** can then view the prescription and follow-up from the Patient module.
 - The **Admin** can monitor hospital-wide records and manage billing, staff, equipment and stock.
+
+### Finalized database relationships
+
+- Every **doctor slot** stores the `availability_id` it was created from. Once an availability has slots, the Doctor cannot edit or delete that availability, which protects existing booking data.
+- Every physical **equipment** record stores `equipment_type_id` and gets its displayed equipment name from `equipment_types`.
+- Every **inventory** record stores `stock_item_type_id` and gets its displayed item name/category from `stock_item_types`.
+- `emergency_registrations` remains intentionally independent because an emergency walk-in does not have to be a previously registered patient.
+- `equipment_sequences` remains a utility table for department-based equipment-number generation rather than a business entity relationship.
 
 ### Important module features
 

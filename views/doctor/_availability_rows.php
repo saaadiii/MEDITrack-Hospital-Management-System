@@ -7,7 +7,8 @@ if (!isset($slots)) {
 <?php foreach ($slots as $row):
     $expired =
         $row['available_date'] < $today ||
-        ($row['available_date'] === $today && $row['end_time'] <= $currentTime); ?>
+        ($row['available_date'] === $today && $row['end_time'] <= $currentTime);
+    $locked = !empty($row['has_slots']); ?>
 <tr>
     <td><?= esc(date('d M Y', strtotime($row['available_date']))) ?></td>
     <td><?= esc(date('h:i A', strtotime($row['start_time']))) ?> - <?= esc(
@@ -15,9 +16,10 @@ if (!isset($slots)) {
      ) ?></td>
     <td><?= esc($row['note'] ?: '—') ?></td>
     <td><span class="badge"><?= esc($expired ? 'Expired' : $row['status']) ?></span></td>
-    <td><?php if (
-         !$expired
-     ): ?><a
+    <td><?php if ($locked): ?>
+        <span class="slot-action-text">In use</span>
+        <?php else: ?>
+        <?php if (!$expired): ?><a
             class="action-btn secondary"
             href="index.php?page=doctor_slots&edit=<?= $row[
                 'id'
@@ -52,6 +54,7 @@ if (!isset($slots)) {
                 type="submit"
             >Delete</button>
         </form>
+        <?php endif; ?>
     </td>
 </tr>
 <?php

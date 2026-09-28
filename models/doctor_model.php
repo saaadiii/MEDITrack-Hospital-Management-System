@@ -563,11 +563,13 @@ class DoctorModel
     // Doctor provides availability; receptionist turns it into bookable slots.
     function availability($did, $date = '')
     {
-        $sql = 'SELECT * FROM doctor_availability WHERE doctor_id=?';
+        $sql =
+            'SELECT av.*,EXISTS(SELECT 1 FROM doctor_slots ds WHERE ds.availability_id=av.id) AS has_slots ' .
+            'FROM doctor_availability av WHERE av.doctor_id=?';
         if ($date !== '') {
-            $sql .= ' AND available_date=?';
+            $sql .= ' AND av.available_date=?';
         }
-        $sql .= ' ORDER BY available_date DESC,start_time';
+        $sql .= ' ORDER BY av.available_date DESC,av.start_time';
         $s = mysqli_prepare($this->c, $sql);
         if ($date !== '') {
             mysqli_stmt_bind_param($s, 'is', $did, $date);
@@ -599,6 +601,18 @@ class DoctorModel
         mysqli_stmt_close($s);
         return $exists;
     }
+    function availabilityHasSlots($did, $id)
+    {
+        $s = mysqli_prepare(
+            $this->c,
+            'SELECT id FROM doctor_slots WHERE availability_id=? AND doctor_id=? LIMIT 1'
+        );
+        mysqli_stmt_bind_param($s, 'ii', $id, $did);
+        mysqli_stmt_execute($s);
+        $exists = (bool) mysqli_fetch_row(mysqli_stmt_get_result($s));
+        mysqli_stmt_close($s);
+        return $exists;
+    }
     function saveAvailability($did, $data)
     {
         $id = (int) ($data['id'] ?? 0);
@@ -625,6 +639,9 @@ class DoctorModel
         if ($this->availabilityDateExists($did, $date, $id)) {
             return false;
         }
+        if ($id && $this->availabilityHasSlots($did, $id)) {
+            return false;
+        }
         if ($id) {
             $s = mysqli_prepare(
                 $this->c,
@@ -649,6 +666,9 @@ class DoctorModel
 
     function deleteAvailability($did, $id)
     {
+        if ($this->availabilityHasSlots($did, $id)) {
+            return false;
+        }
         $s = mysqli_prepare($this->c, 'DELETE FROM doctor_availability WHERE id=? AND doctor_id=?');
         mysqli_stmt_bind_param($s, 'ii', $id, $did);
         $ok = mysqli_stmt_execute($s);

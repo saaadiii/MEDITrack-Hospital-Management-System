@@ -391,6 +391,14 @@ class DoctorController
                     $message =
                         'You already submitted availability for this date. Edit the existing entry instead of creating another one.';
                     $type = 'error';
+                } elseif (
+                    $availabilityId > 0 &&
+                    $this->m->availabilityHasSlots($d['id'], $availabilityId)
+                ) {
+                    $ok = false;
+                    $message =
+                        'This availability already has appointment slots, so its date or time can no longer be changed.';
+                    $type = 'error';
                 } else {
                     $ok = $this->m->saveAvailability($d['id'], $_POST);
                     $message = $ok
@@ -399,8 +407,14 @@ class DoctorController
                     $type = $ok ? 'success' : 'error';
                 }
             } elseif ($action === 'availability_delete') {
-                $ok = $this->m->deleteAvailability($d['id'], (int) ($_POST['id'] ?? 0));
-                $message = $ok ? 'Availability deleted.' : 'Could not delete availability.';
+                $availabilityId = (int) ($_POST['id'] ?? 0);
+                $hasSlots = $this->m->availabilityHasSlots($d['id'], $availabilityId);
+                $ok = !$hasSlots && $this->m->deleteAvailability($d['id'], $availabilityId);
+                $message = $ok
+                    ? 'Availability deleted.'
+                    : ($hasSlots
+                        ? 'This availability already has appointment slots and cannot be deleted.'
+                        : 'Could not delete availability.');
                 $type = $ok ? 'success' : 'error';
             }
         }

@@ -32,22 +32,23 @@ class EquipmentModel
         return $row ?: null;
     }
 
-    private function equipmentTypeExists($name)
+    private function equipmentType($name)
     {
-        $s = mysqli_prepare($this->c, 'SELECT id FROM equipment_types WHERE name=? LIMIT 1');
+        $s = mysqli_prepare($this->c, 'SELECT id,name FROM equipment_types WHERE name=? LIMIT 1');
         mysqli_stmt_bind_param($s, 's', $name);
         mysqli_stmt_execute($s);
-        $ok = (bool) mysqli_fetch_assoc(mysqli_stmt_get_result($s));
+        $row = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
         mysqli_stmt_close($s);
-        return $ok;
+        return $row ?: null;
     }
 
     function equipment()
     {
-        return mysqli_fetch_all(
-            mysqli_query($this->c, 'SELECT * FROM equipment ORDER BY id DESC'),
-            MYSQLI_ASSOC
-        );
+        $sql =
+            'SELECT e.*,t.name AS name FROM equipment e ' .
+            'INNER JOIN equipment_types t ON t.id=e.equipment_type_id ORDER BY e.id DESC';
+        $r = mysqli_query($this->c, $sql);
+        return $r ? mysqli_fetch_all($r, MYSQLI_ASSOC) : [];
     }
 
     function searchEquipment($query = '')
@@ -58,8 +59,10 @@ class EquipmentModel
         }
         $like = '%' . $query . '%';
         $sql =
-            'SELECT * FROM equipment WHERE equipment_code LIKE ? OR name LIKE ? OR ' .
-            'department LIKE ? ORDER BY id DESC LIMIT 100';
+            'SELECT e.*,t.name AS name FROM equipment e ' .
+            'INNER JOIN equipment_types t ON t.id=e.equipment_type_id ' .
+            'WHERE e.equipment_code LIKE ? OR t.name LIKE ? OR e.department LIKE ? ' .
+            'ORDER BY e.id DESC LIMIT 100';
         $s = mysqli_prepare($this->c, $sql);
         mysqli_stmt_bind_param($s, 'sss', $like, $like, $like);
         mysqli_stmt_execute($s);
@@ -108,16 +111,15 @@ class EquipmentModel
         $department = trim($d['department'] ?? '');
         $purchaseDate = trim($d['purchase_date'] ?? '');
         $condition = $d['condition_status'] ?? 'Good';
-        if (
-            $name === '' ||
-            !$this->equipmentTypeExists($name) ||
-            !hospital_department_code($department)
-        ) {
+        $type = $this->equipmentType($name);
+        if (!$type || !hospital_department_code($department)) {
             return false;
         }
         if (!in_array($condition, ['Good', 'Needs Maintenance', 'Out of Service'], true)) {
             return false;
         }
+        $equipmentTypeId = (int) $type['id'];
+
         if ($id) {
             $s = mysqli_prepare(
                 $this->c,
@@ -138,13 +140,13 @@ class EquipmentModel
                     $newCode = $prefix . str_pad((string) $seq, 3, '0', STR_PAD_LEFT);
                     $s = mysqli_prepare(
                         $this->c,
-                        'UPDATE equipment SET equipment_code=?,name=?,department=?,purchase_date=?,condition_status=? WHERE id=?'
+                        'UPDATE equipment SET equipment_code=?,equipment_type_id=?,department=?,purchase_date=?,condition_status=? WHERE id=?'
                     );
                     mysqli_stmt_bind_param(
                         $s,
-                        'sssssi',
+                        'sisssi',
                         $newCode,
-                        $name,
+                        $equipmentTypeId,
                         $department,
                         $purchaseDate,
                         $condition,
@@ -163,13 +165,22 @@ class EquipmentModel
             }
             $s = mysqli_prepare(
                 $this->c,
-                'UPDATE equipment SET name=?,department=?,purchase_date=?,condition_status=? WHERE id=?'
+                'UPDATE equipment SET equipment_type_id=?,department=?,purchase_date=?,condition_status=? WHERE id=?'
             );
-            mysqli_stmt_bind_param($s, 'ssssi', $name, $department, $purchaseDate, $condition, $id);
+            mysqli_stmt_bind_param(
+                $s,
+                'isssi',
+                $equipmentTypeId,
+                $department,
+                $purchaseDate,
+                $condition,
+                $id
+            );
             $ok = mysqli_stmt_execute($s);
             mysqli_stmt_close($s);
             return $ok;
         }
+
         $quantity = max(1, min(100, (int) ($d['quantity'] ?? 1)));
         $prefix = hospital_department_code($department);
         mysqli_begin_transaction($this->c);
@@ -177,15 +188,15 @@ class EquipmentModel
             $seq = $this->reserveEquipmentSequence($prefix, $quantity);
             $s = mysqli_prepare(
                 $this->c,
-                'INSERT INTO equipment(equipment_code,name,department,purchase_date,condition_status) VALUES(?,?,?,?,?)'
+                'INSERT INTO equipment(equipment_code,equipment_type_id,department,purchase_date,condition_status) VALUES(?,?,?,?,?)'
             );
             for ($i = 0; $i < $quantity; $i++) {
                 $code = $prefix . str_pad((string) ($seq + $i), 3, '0', STR_PAD_LEFT);
                 mysqli_stmt_bind_param(
                     $s,
-                    'sssss',
+                    'sisss',
                     $code,
-                    $name,
+                    $equipmentTypeId,
                     $department,
                     $purchaseDate,
                     $condition
@@ -211,5 +222,4 @@ class EquipmentModel
         mysqli_stmt_close($s);
         return $ok;
     }
-
 }

@@ -10,20 +10,7 @@ $nav = [
 ];
 $message = get_flash('success') ?? '';
 $error = get_flash('error') ?? '';
-$selectedAvailabilityId = 0;
-if (!empty($editSlot)) {
-    foreach ($availabilities ?? [] as $availability) {
-        if (
-            (int) $availability['doctor_id'] === (int) $editSlot['doctor_id'] &&
-            $availability['available_date'] === $editSlot['slot_date'] &&
-            $availability['start_time'] <= $editSlot['start_time'] &&
-            $availability['end_time'] >= $editSlot['end_time']
-        ) {
-            $selectedAvailabilityId = (int) $availability['id'];
-            break;
-        }
-    }
-}
+$selectedAvailabilityId = (int) ($editSlot['availability_id'] ?? 0);
 require __DIR__ . '/../shared/top.php';
 ?>
 <section class="stats-grid">

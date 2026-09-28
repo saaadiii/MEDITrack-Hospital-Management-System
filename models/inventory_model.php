@@ -54,15 +54,14 @@ class InventoryModel
 
     function inventory()
     {
-        return mysqli_fetch_all(
-            mysqli_query(
-                $this->c,
-                "SELECT *,CASE WHEN quantity<=minimum_level THEN 'Low Stock' ELSE 'In " .
-                    "Stock' END stock_status,DATE_FORMAT(updated_at,'%d %b %Y, %h:%i %p') " .
-                    'updated_at_display FROM inventory ORDER BY item_name'
-            ),
-            MYSQLI_ASSOC
-        );
+        $sql =
+            "SELECT i.*,t.name AS item_name,t.category AS category," .
+            "CASE WHEN i.quantity<=i.minimum_level THEN 'Low Stock' ELSE 'In Stock' END stock_status," .
+            "DATE_FORMAT(i.updated_at,'%d %b %Y, %h:%i %p') updated_at_display " .
+            'FROM inventory i INNER JOIN stock_item_types t ON t.id=i.stock_item_type_id ' .
+            'ORDER BY t.name';
+        $r = mysqli_query($this->c, $sql);
+        return $r ? mysqli_fetch_all($r, MYSQLI_ASSOC) : [];
     }
 
     function searchInventory($query = '')
@@ -73,19 +72,16 @@ class InventoryModel
         }
         $like = '%' . $query . '%';
         $sql =
-            "SELECT *,CASE WHEN quantity<=minimum_level THEN 'Low Stock' ELSE 'In " .
-            "Stock' END stock_status,DATE_FORMAT(updated_at,'%d %b %Y, %h:%i %p') " .
-            "updated_at_display
-        FROM inventory
-        WHERE item_name LIKE ? " .
-            'OR category LIKE ? OR supplier LIKE ? OR CAST(quantity AS CHAR) LIKE ? OR ' .
-            "CAST(minimum_level AS CHAR) LIKE ?
-           OR DATE_FORMAT(updated_at," .
-            "'%Y-%m-%d %H:%i') LIKE ? OR DATE_FORMAT(updated_at,'%d %b %Y, %h:%i %p') " .
-            "LIKE ?
-           OR CONCAT('I',LPAD(id,4,'0')) LIKE ?
-        ORDER BY " .
-            'item_name LIMIT 100';
+            "SELECT i.*,t.name AS item_name,t.category AS category," .
+            "CASE WHEN i.quantity<=i.minimum_level THEN 'Low Stock' ELSE 'In Stock' END stock_status," .
+            "DATE_FORMAT(i.updated_at,'%d %b %Y, %h:%i %p') updated_at_display " .
+            'FROM inventory i INNER JOIN stock_item_types t ON t.id=i.stock_item_type_id ' .
+            'WHERE t.name LIKE ? OR t.category LIKE ? OR i.supplier LIKE ? ' .
+            'OR CAST(i.quantity AS CHAR) LIKE ? OR CAST(i.minimum_level AS CHAR) LIKE ? ' .
+            "OR DATE_FORMAT(i.updated_at,'%Y-%m-%d %H:%i') LIKE ? " .
+            "OR DATE_FORMAT(i.updated_at,'%d %b %Y, %h:%i %p') LIKE ? " .
+            "OR CONCAT('I',LPAD(i.id,4,'0')) LIKE ? " .
+            'ORDER BY t.name LIMIT 100';
         $s = mysqli_prepare($this->c, $sql);
         mysqli_stmt_bind_param(
             $s,
@@ -182,6 +178,8 @@ class InventoryModel
         if (!$type) {
             return false;
         }
+
+        $stockItemTypeId = (int) $type['id'];
         $new = [
             'item_name' => $type['name'],
             'category' => $type['category'],
@@ -189,10 +187,13 @@ class InventoryModel
             'minimum_level' => max(0, (int) ($d['minimum_level'] ?? 0)),
             'supplier' => trim($d['supplier'] ?? '')
         ];
+
         if ($id) {
             $s = mysqli_prepare(
                 $this->c,
-                'SELECT item_name,category,quantity,minimum_level,supplier FROM inventory WHERE id=? LIMIT 1'
+                'SELECT i.quantity,i.minimum_level,i.supplier,t.name AS item_name,t.category AS category ' .
+                    'FROM inventory i INNER JOIN stock_item_types t ON t.id=i.stock_item_type_id ' .
+                    'WHERE i.id=? LIMIT 1'
             );
             mysqli_stmt_bind_param($s, 'i', $id);
             mysqli_stmt_execute($s);
@@ -201,21 +202,22 @@ class InventoryModel
             if (!$old) {
                 return false;
             }
+
             $changed =
                 (string) $old['item_name'] !== $new['item_name'] ||
                 (string) $old['category'] !== $new['category'] ||
                 (int) $old['quantity'] !== $new['quantity'] ||
                 (int) $old['minimum_level'] !== $new['minimum_level'] ||
                 (string) ($old['supplier'] ?? '') !== $new['supplier'];
+
             $s = mysqli_prepare(
                 $this->c,
-                'UPDATE inventory SET item_name=?,category=?,quantity=?,minimum_level=?,supplier=? WHERE id=?'
+                'UPDATE inventory SET stock_item_type_id=?,quantity=?,minimum_level=?,supplier=? WHERE id=?'
             );
             mysqli_stmt_bind_param(
                 $s,
-                'ssiisi',
-                $new['item_name'],
-                $new['category'],
+                'iiisi',
+                $stockItemTypeId,
                 $new['quantity'],
                 $new['minimum_level'],
                 $new['supplier'],
@@ -227,28 +229,27 @@ class InventoryModel
                 $this->writeInventoryHistory($id, 'Updated', $old, $new);
             }
             return $ok;
-        } else {
-            $s = mysqli_prepare(
-                $this->c,
-                'INSERT INTO inventory(item_name,category,quantity,minimum_level,supplier) VALUES(?,?,?,?,?)'
-            );
-            mysqli_stmt_bind_param(
-                $s,
-                'ssiis',
-                $new['item_name'],
-                $new['category'],
-                $new['quantity'],
-                $new['minimum_level'],
-                $new['supplier']
-            );
-            $ok = mysqli_stmt_execute($s);
-            $newId = (int) mysqli_insert_id($this->c);
-            mysqli_stmt_close($s);
-            if ($ok) {
-                $this->writeInventoryHistory($newId, 'Created', [], $new);
-            }
-            return $ok;
         }
+
+        $s = mysqli_prepare(
+            $this->c,
+            'INSERT INTO inventory(stock_item_type_id,quantity,minimum_level,supplier) VALUES(?,?,?,?)'
+        );
+        mysqli_stmt_bind_param(
+            $s,
+            'iiis',
+            $stockItemTypeId,
+            $new['quantity'],
+            $new['minimum_level'],
+            $new['supplier']
+        );
+        $ok = mysqli_stmt_execute($s);
+        $newId = (int) mysqli_insert_id($this->c);
+        mysqli_stmt_close($s);
+        if ($ok) {
+            $this->writeInventoryHistory($newId, 'Created', [], $new);
+        }
+        return $ok;
     }
 
     function inventoryHistory($id)
@@ -270,7 +271,10 @@ class InventoryModel
     {
         $s = mysqli_prepare(
             $this->c,
-            "SELECT *,DATE_FORMAT(updated_at,'%d %b %Y, %h:%i %p') updated_at_display FROM inventory WHERE id=? LIMIT 1"
+            "SELECT i.*,t.name AS item_name,t.category AS category," .
+                "DATE_FORMAT(i.updated_at,'%d %b %Y, %h:%i %p') updated_at_display " .
+                'FROM inventory i INNER JOIN stock_item_types t ON t.id=i.stock_item_type_id ' .
+                'WHERE i.id=? LIMIT 1'
         );
         mysqli_stmt_bind_param($s, 'i', $id);
         mysqli_stmt_execute($s);
@@ -287,5 +291,4 @@ class InventoryModel
         mysqli_stmt_close($s);
         return $ok;
     }
-
 }

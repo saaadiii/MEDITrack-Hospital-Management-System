@@ -356,7 +356,8 @@ class AjaxController
         }
         $id = (int) ($_POST['id'] ?? 0);
         $date = trim($_POST['date'] ?? '');
-        $ok = $model->deleteAvailability((int) $doctor['id'], $id);
+        $hasSlots = $model->availabilityHasSlots((int) $doctor['id'], $id);
+        $ok = !$hasSlots && $model->deleteAvailability((int) $doctor['id'], $id);
         $slots = $model->availability((int) $doctor['id'], $date);
         $d = $doctor;
         $today = date('Y-m-d');
@@ -366,7 +367,11 @@ class AjaxController
         json_response(
             [
                 'success' => $ok,
-                'message' => $ok ? 'Availability deleted.' : 'Could not delete availability.',
+                'message' => $ok
+                    ? 'Availability deleted.'
+                    : ($hasSlots
+                        ? 'This availability already has appointment slots and cannot be deleted.'
+                        : 'Could not delete availability.'),
                 'html' => $html
             ],
             $ok ? 200 : 422
